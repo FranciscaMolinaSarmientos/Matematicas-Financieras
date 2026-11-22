@@ -1,155 +1,216 @@
-// VENTANA 1: captura de datos, cálculo, cuadro de amortización y guardado.
-// Si recibe un id, funciona en modo "editar" (precarga los datos y actualiza en vez de crear).
-class FormCalculadora : Form
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Text;
+using System.Windows.Forms;
+
+namespace CalculadoraAmortizacion
 {
-    readonly TextBox txtMonto = new() { Width = 160 };
-    readonly TextBox txtTasa = new() { Width = 160 };
-    readonly ComboBox cmbTipo = new() { Width = 160, DropDownStyle = ComboBoxStyle.DropDownList };
-    readonly ComboBox cmbMetodo = new() { Width = 160, DropDownStyle = ComboBoxStyle.DropDownList };
-    readonly NumericUpDown numCap = new() { Width = 160, Minimum = 1, Maximum = 365, Value = 12 };
-    readonly NumericUpDown numPagosAnio = new() { Width = 160, Minimum = 1, Maximum = 365, Value = 12 };
-    readonly NumericUpDown numN = new() { Width = 160, Minimum = 1, Maximum = 1200, Value = 12 };
-    readonly Button btnCalcular = new() { Text = "Calcular", AutoSize = true };
-    readonly Button btnGuardar = new() { Text = "Guardar", AutoSize = true, Enabled = false };
-    readonly Button btnHistorial = new() { Text = "Ver historial", AutoSize = true };
-    readonly Label lblResumen = new() { AutoSize = true, Padding = new Padding(0, 8, 0, 8) };
-    readonly DataGridView grid = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
-
-    Calculo? _actual;        // Último cálculo mostrado
-    readonly long? _idEditar;  // null = nuevo; con valor = editando ese id
-
-    public FormCalculadora(long? idEditar = null)
+    // Captura de datos, cálculo de la tabla de amortización, guardar y modificar
+    public partial class FormCalculadora : FormPlantilla
     {
-        _idEditar = idEditar;
-        Text = idEditar == null ? "Calculadora de amortización" : $"Editar cálculo #{idEditar}";
-        Size = new Size(760, 640);
-        StartPosition = FormStartPosition.CenterScreen;
+        // Préstamo que se calculó y se muestra en pantalla
+        private Prestamo prestamo;
 
-        cmbTipo.Items.AddRange(new object[] { "Efectiva anual", "Nominal capitalizable" });
-        cmbMetodo.Items.AddRange(new object[] { "Gradual (pagos iguales)", "Constante (amortización igual)" });
-        cmbTipo.SelectedIndex = 0;
-        cmbMetodo.SelectedIndex = 0;
-        numCap.Enabled = false;   // Solo aplica con tasa nominal
-        cmbTipo.SelectedIndexChanged += (_, _) => numCap.Enabled = cmbTipo.SelectedIndex == 1;
-
-        // Campos de captura en dos columnas (etiqueta | control)
-        var campos = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Dock = DockStyle.Top, Padding = new Padding(8) };
-        void Campo(string texto, Control c)
+        public FormCalculadora()
         {
-            campos.Controls.Add(new Label { Text = texto, AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(0, 6, 12, 6) });
-            campos.Controls.Add(c);
+            InitializeComponent();
+            comboBoxTipoTasa.SelectedIndex = 0;
+            comboBoxMetodo.SelectedIndex = 0;
         }
-        Campo("Monto de la deuda:", txtMonto);
-        Campo("Tasa de interés (%):", txtTasa);
-        Campo("Tipo de tasa:", cmbTipo);
-        Campo("Capitalizaciones por año:", numCap);
-        Campo("Pagos por año:", numPagosAnio);
-        Campo("Número de pagos:", numN);
-        Campo("Método:", cmbMetodo);
 
-        var botones = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(8, 0, 8, 0) };
-        botones.Controls.AddRange(new Control[] { btnCalcular, btnGuardar, btnHistorial });
-
-        // Diseño vertical: campos / botones / resumen / tabla (ocupa el resto)
-        var raiz = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        raiz.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        raiz.Controls.Add(campos, 0, 0);
-        raiz.Controls.Add(botones, 0, 1);
-        raiz.Controls.Add(lblResumen, 0, 2);
-        raiz.Controls.Add(grid, 0, 3);
-        Controls.Add(raiz);
-
-        btnCalcular.Click += (_, _) => Calcular();
-        btnGuardar.Click += (_, _) => Guardar();
-        btnHistorial.Click += (_, _) => { using var f = new FormHistorial(); f.ShowDialog(this); };
-
-        if (idEditar != null)
+        // Las capitalizaciones solo aplican con tasa nominal
+        private void comboBoxTipoTasa_SelectedIndexChanged(object sender, EventArgs e)
         {
-            btnGuardar.Text = "Actualizar";
-            btnHistorial.Visible = false;
-            Load += (_, _) => Precargar(idEditar.Value);
-        }
-    }
-
-    // Lee los campos y valida; regresa false si algo es incorrecto
-    bool TryLeer(out Calculo c)
-    {
-        c = null!;
-        if (!decimal.TryParse(txtMonto.Text, out var monto) || monto <= 0) { Aviso("Escribe un monto mayor a 0."); return false; }
-        if (!decimal.TryParse(txtTasa.Text, out var tasa) || tasa <= 0) { Aviso("Escribe una tasa mayor a 0."); return false; }
-
-        c = Calculadora.Calcular(cmbMetodo.SelectedIndex + 1, monto, tasa, cmbTipo.SelectedIndex + 1,
-                                 (int)numCap.Value, (int)numPagosAnio.Value, (int)numN.Value);
-        return true;
-    }
-
-    void Calcular()
-    {
-        if (!TryLeer(out var c)) return;
-        Mostrar(c);
-    }
-
-    void Mostrar(Calculo c)
-    {
-        _actual = c;
-        lblResumen.Text = $"Tasa efectiva por periodo: {c.TasaPeriodo * 100:0.0000}%   |   " +
-                          $"Total intereses: {c.Filas.Sum(f => f.Interes):C2}   |   Total pagado: {c.Filas.Sum(f => f.Pago):C2}";
-        grid.DataSource = c.Filas;
-        FormatoGrid.Moneda(grid);
-        btnGuardar.Enabled = true;
-    }
-
-    void Guardar()
-    {
-        if (_actual == null) return;
-        try
-        {
-            if (_idEditar == null)
+            if (comboBoxTipoTasa.Text == "Nominal capitalizable")
             {
-                long id = App.Bd.Guardar(_actual);
-                MessageBox.Show($"Guardado con el #{id}.");
+                textBoxCapitalizaciones.Enabled = true;
             }
             else
             {
-                App.Bd.Actualizar(_idEditar.Value, _actual);
-                MessageBox.Show($"Cálculo #{_idEditar} actualizado.");
-                DialogResult = DialogResult.OK;   // Cierra la ventana de edición
+                textBoxCapitalizaciones.Text = "1";
+                textBoxCapitalizaciones.Enabled = false;
             }
         }
-        catch (Exception) { Aviso("No se guardó: revisa que MySQL esté iniciado en XAMPP."); }
-    }
 
-    // Modo editar: llena los campos con los datos guardados y muestra su cuadro
-    void Precargar(long id)
-    {
-        try
+        private void buttonCalcular_Click(object sender, EventArgs e)
         {
-            var c = App.Bd.Obtener(id);
-            if (c == null) { Aviso("No existe ese cálculo."); Close(); return; }
-            txtMonto.Text = c.Monto.ToString();
-            txtTasa.Text = c.Tasa.ToString();
-            cmbTipo.SelectedIndex = c.Tipo - 1;
-            cmbMetodo.SelectedIndex = c.Metodo - 1;
-            numCap.Value = c.Cap;
-            numPagosAnio.Value = c.PagosAnio;
-            numN.Value = c.N;
-            Mostrar(c);
+            string mensaje = validar();
+            if (mensaje != "")
+            {
+                MessageBox.Show(mensaje, "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            else
+            {
+                prestamo = leerDatos();
+                prestamo.Calcular();
+                mostrar(prestamo);
+
+                // Si se está modificando un cálculo del historial, se guarda con Modificar
+                if (Estatica.PrestamoActual == null)
+                {
+                    buttonGuardar.Enabled = true;
+                }
+            }
         }
-        catch (Exception) { Aviso("No se pudo leer la base de datos."); Close(); }
-    }
 
-    static void Aviso(string texto) => MessageBox.Show(texto, "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-}
+        private void buttonGuardar_Click(object sender, EventArgs e)
+        {
+            if (prestamo == null)
+            {
+                MessageBox.Show("Primero calcula la tabla de amortización");
+            }
+            else
+            {
+                int id = Operaciones.agregar(prestamo);
+                if (id != 0)
+                {
+                    MessageBox.Show(String.Format("Cálculo guardado con el número {0}", id));
+                    buttonGuardar.Enabled = false;
+                }
+                else
+                {
+                    MessageBox.Show("El cálculo no pudo ser guardado");
+                }
+            }
+        }
 
-// Da formato de moneda (C2) a todas las columnas decimales de una tabla
-static class FormatoGrid
-{
-    public static void Moneda(DataGridView g)
-    {
-        foreach (DataGridViewColumn col in g.Columns)
-            if (col.ValueType == typeof(decimal)) col.DefaultCellStyle.Format = "C2";
+        private void buttonHistorial_Click(object sender, EventArgs e)
+        {
+            Estatica.PrestamoActual = null;
+            FormHistorial frmHistorial = new FormHistorial();
+            frmHistorial.ShowDialog();
+
+            // Si en el historial se eligió un cálculo para modificar, se cargan sus datos
+            if (Estatica.PrestamoActual != null)
+            {
+                prestamo = Estatica.PrestamoActual;
+                textBoxMonto.Text = Convert.ToString(prestamo.Monto);
+                textBoxTasa.Text = Convert.ToString(prestamo.Tasa);
+                comboBoxTipoTasa.Text = prestamo.TipoTasa;
+                textBoxCapitalizaciones.Text = Convert.ToString(prestamo.Capitalizaciones);
+                textBoxPagosAnio.Text = Convert.ToString(prestamo.PagosAnio);
+                textBoxNumPagos.Text = Convert.ToString(prestamo.NumPagos);
+                comboBoxMetodo.Text = prestamo.Metodo;
+                mostrar(prestamo);
+
+                buttonGuardar.Enabled = false;
+                buttonModificar.Enabled = true;
+            }
+        }
+
+        private void buttonModificar_Click(object sender, EventArgs e)
+        {
+            string mensaje = validar();
+            if (mensaje != "")
+            {
+                MessageBox.Show(mensaje, "Aviso", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            else
+            {
+                // Se vuelve a calcular con los datos que estén en pantalla
+                prestamo = leerDatos();
+                prestamo.Id = Estatica.PrestamoActual.Id;
+                prestamo.Calcular();
+                mostrar(prestamo);
+
+                int resultado = Operaciones.modificar(prestamo);
+                if (resultado != 0)
+                {
+                    MessageBox.Show(String.Format("Cálculo número {0} modificado", prestamo.Id));
+                    limpiar();
+                }
+                else
+                {
+                    MessageBox.Show("El cálculo no pudo ser modificado");
+                }
+            }
+        }
+
+        private void buttonLimpiar_Click(object sender, EventArgs e)
+        {
+            limpiar();
+        }
+
+        // Revisa que los datos sean correctos; regresa "" si todo está bien
+        private string validar()
+        {
+            decimal monto;
+            decimal tasa;
+            int capitalizaciones;
+            int pagosAnio;
+            int numPagos;
+
+            if (textBoxMonto.Text == "" || textBoxTasa.Text == "" || textBoxCapitalizaciones.Text == "" ||
+                textBoxPagosAnio.Text == "" || textBoxNumPagos.Text == "")
+            {
+                return "Llena todos los campos";
+            }
+            else if (!decimal.TryParse(textBoxMonto.Text, out monto) || monto <= 0)
+            {
+                return "Escribe un monto mayor a 0";
+            }
+            else if (!decimal.TryParse(textBoxTasa.Text, out tasa) || tasa <= 0)
+            {
+                return "Escribe una tasa mayor a 0";
+            }
+            else if (!int.TryParse(textBoxCapitalizaciones.Text, out capitalizaciones) || capitalizaciones <= 0)
+            {
+                return "Las capitalizaciones por año deben ser un número entero mayor a 0";
+            }
+            else if (!int.TryParse(textBoxPagosAnio.Text, out pagosAnio) || pagosAnio <= 0)
+            {
+                return "Los pagos por año deben ser un número entero mayor a 0";
+            }
+            else if (!int.TryParse(textBoxNumPagos.Text, out numPagos) || numPagos <= 0)
+            {
+                return "El número de pagos debe ser un número entero mayor a 0";
+            }
+            else
+            {
+                return "";
+            }
+        }
+
+        // Carga todos los datos de la pantalla en un objeto Prestamo
+        private Prestamo leerDatos()
+        {
+            Prestamo p = new Prestamo();
+            p.Monto = Convert.ToDecimal(textBoxMonto.Text);
+            p.Tasa = Convert.ToDecimal(textBoxTasa.Text);
+            p.TipoTasa = comboBoxTipoTasa.Text;
+            p.Capitalizaciones = Convert.ToInt32(textBoxCapitalizaciones.Text);
+            p.PagosAnio = Convert.ToInt32(textBoxPagosAnio.Text);
+            p.NumPagos = Convert.ToInt32(textBoxNumPagos.Text);
+            p.Metodo = comboBoxMetodo.Text;
+            return p;
+        }
+
+        // Muestra el resumen y la tabla de amortización
+        private void mostrar(Prestamo p)
+        {
+            labelResumen.Text = p.Resumen();
+            dataGridViewTabla.DataSource = null;
+            dataGridViewTabla.DataSource = p.Tabla;
+            formatoMoneda(dataGridViewTabla);
+        }
+
+        private void limpiar()
+        {
+            textBoxMonto.Clear();
+            textBoxTasa.Clear();
+            textBoxPagosAnio.Text = "12";
+            textBoxNumPagos.Clear();
+            comboBoxTipoTasa.SelectedIndex = 0;
+            comboBoxMetodo.SelectedIndex = 0;
+            labelResumen.Text = "";
+            dataGridViewTabla.DataSource = null;
+            prestamo = null;
+            Estatica.PrestamoActual = null;
+            buttonGuardar.Enabled = false;
+            buttonModificar.Enabled = false;
+        }
     }
 }

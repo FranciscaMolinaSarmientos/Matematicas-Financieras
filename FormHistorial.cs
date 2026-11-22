@@ -1,82 +1,112 @@
-// VENTANA 2: historial guardado. Arriba la lista de cálculos; abajo el cuadro del seleccionado.
-// Permite Editar (abre la Ventana 1 en modo edición) y Eliminar.
-class FormHistorial : Form
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Text;
+using System.Windows.Forms;
+
+namespace CalculadoraAmortizacion
 {
-    readonly DataGridView gridLista = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, MultiSelect = false,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
-    readonly DataGridView gridDetalle = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
-    readonly Button btnEditar = new() { Text = "Editar", AutoSize = true };
-    readonly Button btnEliminar = new() { Text = "Eliminar", AutoSize = true };
-    readonly Button btnRefrescar = new() { Text = "Refrescar", AutoSize = true };
-
-    public FormHistorial()
+    // Lista de cálculos guardados; permite ver su tabla, elegir uno para modificar y eliminar
+    public partial class FormHistorial : FormPlantilla
     {
-        Text = "Historial de cálculos";
-        Size = new Size(760, 600);
-        StartPosition = FormStartPosition.CenterParent;
-
-        var botones = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(8) };
-        botones.Controls.AddRange(new Control[] { btnEditar, btnEliminar, btnRefrescar });
-
-        var raiz = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        raiz.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
-        raiz.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
-        raiz.Controls.Add(botones, 0, 0);
-        raiz.Controls.Add(gridLista, 0, 1);
-        raiz.Controls.Add(gridDetalle, 0, 2);
-        Controls.Add(raiz);
-
-        gridLista.SelectionChanged += (_, _) => MostrarDetalle();
-        btnRefrescar.Click += (_, _) => Cargar();
-        btnEditar.Click += (_, _) => Editar();
-        btnEliminar.Click += (_, _) => Eliminar();
-        Load += (_, _) => Cargar();
-    }
-
-    long? IdSeleccionado => gridLista.CurrentRow?.DataBoundItem is Resumen r ? r.Id : null;
-
-    // READ (lista)
-    void Cargar()
-    {
-        try
+        public FormHistorial()
         {
-            gridLista.DataSource = App.Bd.ListarResumen();
-            FormatoGrid.Moneda(gridLista);
-            if (gridLista.Columns["Fecha"] != null) gridLista.Columns["Fecha"]!.DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
-            MostrarDetalle();
+            InitializeComponent();
         }
-        catch (Exception) { MessageBox.Show("No se pudo leer la base de datos."); }
-    }
 
-    // READ (detalle del cálculo seleccionado)
-    void MostrarDetalle()
-    {
-        if (IdSeleccionado is not long id) { gridDetalle.DataSource = null; return; }
-        try
+        private void FormHistorial_Load(object sender, EventArgs e)
         {
-            gridDetalle.DataSource = App.Bd.Detalle(id);
-            FormatoGrid.Moneda(gridDetalle);
+            cargar();
         }
-        catch (Exception) { MessageBox.Show("No se pudo leer la base de datos."); }
-    }
 
-    // UPDATE: abre la Ventana 1 en modo edición y refresca al volver
-    void Editar()
-    {
-        if (IdSeleccionado is not long id) return;
-        using var f = new FormCalculadora(id);
-        f.ShowDialog(this);
-        Cargar();
-    }
+        // Al cambiar de renglón se muestra la tabla de amortización de ese cálculo
+        private void dataGridViewSimulaciones_SelectionChanged(object sender, EventArgs e)
+        {
+            if (dataGridViewSimulaciones.CurrentRow != null)
+            {
+                int id = Convert.ToInt32(dataGridViewSimulaciones.CurrentRow.Cells["Id"].Value);
+                dataGridViewDetalle.DataSource = Operaciones.detalle(id);
+                formatoMoneda(dataGridViewDetalle);
+            }
+            else
+            {
+                dataGridViewDetalle.DataSource = null;
+            }
+        }
 
-    // DELETE con confirmación
-    void Eliminar()
-    {
-        if (IdSeleccionado is not long id) return;
-        if (MessageBox.Show($"¿Eliminar el #{id}?", "Confirmar", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-        try { App.Bd.Eliminar(id); Cargar(); }
-        catch (Exception) { MessageBox.Show("No se pudo eliminar. Revisa que MySQL esté iniciado en XAMPP."); }
+        private void buttonModificar_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewSimulaciones.CurrentRow != null)
+            {
+                int id = Convert.ToInt32(dataGridViewSimulaciones.CurrentRow.Cells["Id"].Value);
+                Estatica.PrestamoActual = Operaciones.selecPrestamo(id);
+                this.Close();
+            }
+            else
+            {
+                MessageBox.Show("Selecciona un cálculo");
+            }
+        }
+
+        private void buttonEliminar_Click(object sender, EventArgs e)
+        {
+            if (dataGridViewSimulaciones.CurrentRow == null)
+            {
+                MessageBox.Show("Selecciona un cálculo");
+            }
+            else if (MessageBox.Show("Está seguro de eliminar el cálculo", "Confirme", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) == DialogResult.Yes)
+            {
+                int id = Convert.ToInt32(dataGridViewSimulaciones.CurrentRow.Cells["Id"].Value);
+                int resultado = Operaciones.eliminar(id);
+                if (resultado > 0)
+                {
+                    MessageBox.Show("Cálculo eliminado");
+                    cargar();
+                }
+                else
+                {
+                    MessageBox.Show("No se pudo eliminar");
+                }
+            }
+            else
+            {
+                MessageBox.Show("Eliminación cancelada");
+            }
+        }
+
+        private void buttonRegresar_Click(object sender, EventArgs e)
+        {
+            this.Close();
+        }
+
+        // Lee de la base de datos todos los cálculos guardados
+        private void cargar()
+        {
+            dataGridViewSimulaciones.DataSource = null;
+            dataGridViewSimulaciones.DataSource = Operaciones.listar();
+            formatoMoneda(dataGridViewSimulaciones);
+
+            // Columnas que no hace falta ver en la lista
+            ocultarColumna("Capitalizaciones");
+            ocultarColumna("PagosAnio");
+            ocultarColumna("TasaPeriodo");
+            ocultarColumna("Tabla");
+
+            if (dataGridViewSimulaciones.Columns["Fecha"] != null)
+            {
+                dataGridViewSimulaciones.Columns["Fecha"].DefaultCellStyle.Format = "dd/MM/yyyy HH:mm";
+            }
+        }
+
+        private void ocultarColumna(string nombre)
+        {
+            if (dataGridViewSimulaciones.Columns[nombre] != null)
+            {
+                dataGridViewSimulaciones.Columns[nombre].Visible = false;
+            }
+        }
     }
 }

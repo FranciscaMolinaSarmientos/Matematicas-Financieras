@@ -1,21 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Indica que se utilizará el SDK de .NET para construir el proyecto. -->
     <OutputType>WinExe</OutputType>
-    <!-- Especifica que el proyecto utiliza .NET 8 para Windows. -->
     <TargetFramework>net8.0-windows</TargetFramework>
-    <!-- Habilita el uso de formularios Windows Forms. -->
     <UseWindowsForms>true</UseWindowsForms>
-    <!-- Activa las referencias a tipos anulables para detectar posibles valores null. -->
-    <Nullable>enable</Nullable>
-    <!-- Permite utilizar automáticamente espacios de nombres comunes sin escribir using en cada archivo. -->
+    <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>CalculadoraAmortizacion</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Agrega la biblioteca MySqlConnector para conectar C# con una base de datos MySQL. -->
-    <PackageReference Include="MySqlConnector" Version="2.3.7" />
+    <!-- Paquete para conectar C# con SQL Server (el mismo de la práctica de clientes) -->
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
   </ItemGroup>
 
 </Project>
