@@ -1,132 +1,39 @@
--- ==========================================
--- CREACIÓN DE LA BASE DE DATOS
--- ==========================================
+-- Base de datos de la Calculadora de Amortización (SQL Server)
+-- Ejecutar en SQL Server Management Studio en dos partes:
+-- Parte 1: solo la línea CREATE DATABASE
+-- Parte 2: desde USE hasta el final
 
--- Crea una base de datos llamada amortizacion_db.
-CREATE DATABASE `amortizacion_db`;
+-- Parte 1
+CREATE DATABASE Amortizacion;
 
--- ==========================================
--- CREACIÓN DE LA TABLA: simulaciones
--- ==========================================
+-- Parte 2
+USE Amortizacion;
 
--- Esta tabla almacena la información general
--- de cada simulación financiera.
+-- Un renglón por cada cálculo: datos capturados y totales
+CREATE TABLE Simulacion (
+id_simulacion INT PRIMARY KEY IDENTITY,
+fecha DATETIME DEFAULT GETDATE(),
+metodo VARCHAR(20),
+monto DECIMAL(18,2),
+tasa DECIMAL(9,4),
+tipo_tasa VARCHAR(30),
+capitalizaciones INT,
+pagos_anio INT,
+num_pagos INT,
+tasa_periodo DECIMAL(12,8),
+pago_inicial DECIMAL(18,2),
+total_pagado DECIMAL(18,2),
+total_intereses DECIMAL(18,2)
+);
 
-CREATE TABLE `simulaciones` (
-  `id` bigint(20) NOT NULL,
-  -- Identificador único de cada simulación.
-
-  `fecha` datetime NOT NULL DEFAULT current_timestamp(),
-  -- Fecha y hora en que se registra la simulación.
-  -- Si no se proporciona, MySQL coloca la fecha actual.
-
-  `metodo` tinyint(4) NOT NULL,
-  -- Identifica el método de amortización utilizado.
-
-  `monto` decimal(18,2) NOT NULL,
-  -- Cantidad inicial del préstamo o capital.
-
-  `tasa_porcentaje` decimal(9,4) NOT NULL,
-  -- Tasa de interés expresada en porcentaje.
-
-  `tipo_tasa` tinyint(4) NOT NULL,
-  -- Identifica el tipo de tasa de interés.
-
-  `capitalizaciones_anio` int(11) NOT NULL,
-  -- Número de capitalizaciones de intereses al año.
-
-  `pagos_anio` int(11) NOT NULL,
-  -- Cantidad de pagos que se realizan por año.
-
-  `num_pagos` int(11) NOT NULL,
-  -- Número total de pagos del préstamo.
-
-  `tasa_periodo` decimal(12,8) NOT NULL,
-  -- Tasa de interés correspondiente a cada periodo de pago.
-
-  `pago_inicial` decimal(18,2) NOT NULL,
-  -- Importe del pago inicial o pago periódico calculado.
-
-  `total_pagado` decimal(18,2) NOT NULL,
-  -- Suma de todos los pagos realizados.
-
-  `total_intereses` decimal(18,2) NOT NULL
-  -- Total de intereses generados durante el préstamo.
-) ENGINE=InnoDB
-  DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_general_ci;
-
--- ==========================================
--- CREACIÓN DE LA TABLA: detalle_amortizacion
--- ==========================================
-
--- Almacena el desglose de cada periodo
--- de la tabla de amortización.
-
-CREATE TABLE `detalle_amortizacion` (
-  `id` bigint(20) NOT NULL,
-  -- Identificador único de cada registro.
-
-  `simulacion_id` bigint(20) NOT NULL,
-  -- Identificador de la simulación a la que pertenece.
-
-  `periodo` int(11) NOT NULL,
-  -- Número del pago: 1, 2, 3, 4, etc.
-
-  `pago` decimal(18,2) NOT NULL,
-  -- Cantidad total que se paga en ese periodo.
-
-  `interes` decimal(18,2) NOT NULL,
-  -- Parte del pago que corresponde a intereses.
-
-  `amortizacion` decimal(18,2) NOT NULL,
-  -- Parte del pago que reduce la deuda.
-
-  `saldo` decimal(18,2) NOT NULL
-  -- Deuda pendiente después de realizar el pago.
-) ENGINE=InnoDB
-  DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_general_ci;
-
--- ==========================================
--- CONFIGURACIÓN DE CLAVES E ÍNDICES
--- ==========================================
-
--- Establece id como clave primaria de detalle_amortizacion.
-ALTER TABLE `detalle_amortizacion`
-  ADD PRIMARY KEY (`id`),
-
-  -- Crea un índice para buscar los registros
-  -- relacionados con una simulación.
-  ADD KEY `simulacion_id` (`simulacion_id`);
-
--- Establece id como clave primaria de simulaciones.
-ALTER TABLE `simulaciones`
-  ADD PRIMARY KEY (`id`);
-
--- ==========================================
--- CONFIGURACIÓN AUTO_INCREMENT
--- ==========================================
-
--- Hace que el ID de detalle_amortizacion
--- se genere automáticamente.
-ALTER TABLE `detalle_amortizacion`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT;
-
--- Hace que el ID de simulaciones
--- se genere automáticamente.
-ALTER TABLE `simulaciones`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT;
-
--- ==========================================
--- RELACIÓN ENTRE LAS DOS TABLAS
--- ==========================================
-
--- Establece una llave foránea que relaciona
--- detalle_amortizacion con simulaciones.
-
-ALTER TABLE `detalle_amortizacion`
-  ADD CONSTRAINT `detalle_amortizacion_ibfk_1`
-  FOREIGN KEY (`simulacion_id`)
-  REFERENCES `simulaciones` (`id`)
-  ON DELETE CASCADE;
+-- Un renglón por cada periodo de la tabla de amortización
+-- ON DELETE CASCADE: al borrar una simulación se borra también su detalle
+CREATE TABLE Detalle (
+id_detalle INT PRIMARY KEY IDENTITY,
+id_simulacion INT FOREIGN KEY REFERENCES Simulacion(id_simulacion) ON DELETE CASCADE,
+periodo INT,
+pago DECIMAL(18,2),
+interes DECIMAL(18,2),
+amortizacion DECIMAL(18,2),
+saldo DECIMAL(18,2)
+);
